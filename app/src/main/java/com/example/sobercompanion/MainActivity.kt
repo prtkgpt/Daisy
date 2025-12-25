@@ -4,61 +4,104 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import java.util.*
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.example.sobercompanion.ai.BehavioralScienceCoach
+import com.example.sobercompanion.ai.SoberCoach
+import com.example.sobercompanion.model.ChatMessage
+import com.example.sobercompanion.ui.ChatAdapter
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
     private var daysSober = 0
     private lateinit var textViewDaysSober: TextView
-    private lateinit var textViewAI: TextView
     private lateinit var buttonCheckIn: Button
     private lateinit var sharedPreferences: SharedPreferences
 
-    private val encouragements = listOf(
-        "You're doing great! Keep it up!",
-        "One day at a time. You've got this.",
-        "Sobriety is a journey, not a destination.",
-        "Believe you can and you're halfway there.",
-        "Stay strong, better days are coming.",
-        "Your potential is endless. Go do what you were created to do.",
-        "The best way out is always through."
-    )
+    // Chat components
+    private lateinit var recyclerViewChat: RecyclerView
+    private lateinit var editTextMessage: EditText
+    private lateinit var buttonSend: Button
+    private lateinit var chatAdapter: ChatAdapter
+    private val chatMessages = mutableListOf<ChatMessage>()
+
+    // AI Coach
+    private val soberCoach: SoberCoach = BehavioralScienceCoach()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Init Views
         textViewDaysSober = findViewById(R.id.textViewDaysSober)
-        textViewAI = findViewById(R.id.textViewAI)
         buttonCheckIn = findViewById(R.id.buttonCheckIn)
+        recyclerViewChat = findViewById(R.id.recyclerViewChat)
+        editTextMessage = findViewById(R.id.editTextMessage)
+        buttonSend = findViewById(R.id.buttonSend)
 
+        // Init Persistence
         sharedPreferences = getSharedPreferences("SoberCompanionPrefs", Context.MODE_PRIVATE)
         daysSober = sharedPreferences.getInt("daysSober", 0)
+        updateSoberStatsUI()
 
-        updateUI()
+        // Init Chat
+        chatAdapter = ChatAdapter(chatMessages)
+        recyclerViewChat.layoutManager = LinearLayoutManager(this).apply {
+            stackFromEnd = true
+        }
+        recyclerViewChat.adapter = chatAdapter
 
+        // Add initial greeting
+        addMessage(ChatMessage("Hello! I'm your Sober Companion. I'm powered by behavioral science principles to help you navigate cravings, stress, and celebrations. How are you feeling right now?", false))
+
+        // Check In Logic
         buttonCheckIn.setOnClickListener {
-            // In a real app, this would persist data and perhaps check dates.
-            // For this demo, we'll just increment or reset for demonstration logic.
-            // Let's implement a simple "Increment" for now as "Another day sober!"
-            // To be more realistic for "Reset", we'd need a different flow.
-            // Let's assume the button is "I stayed sober today" -> Increments count.
             daysSober++
             saveProgress()
-            updateUI()
-            giveEncouragement()
+            updateSoberStatsUI()
+            addMessage(ChatMessage("I just checked in for another day!", true))
+            respondToUser("I just checked in for another day!")
         }
 
         buttonCheckIn.setOnLongClickListener {
-             // Long click to reset (Relapse scenario)
              daysSober = 0
              saveProgress()
-             updateUI()
-             textViewAI.text = "AI Companion: It's okay. We start again. Don't give up."
+             updateSoberStatsUI()
+             addMessage(ChatMessage("I relapsed and reset my counter.", true))
+             respondToUser("I relapsed and reset my counter.")
              true
         }
+
+        // Send Logic
+        buttonSend.setOnClickListener {
+            val text = editTextMessage.text.toString().trim()
+            if (text.isNotEmpty()) {
+                editTextMessage.text.clear()
+                addMessage(ChatMessage(text, true))
+                respondToUser(text)
+            }
+        }
+    }
+
+    private fun respondToUser(userText: String) {
+        // Use Coroutines to call the AI asynchronously
+        CoroutineScope(Dispatchers.Main).launch {
+            val response = soberCoach.getResponse(userText, chatMessages)
+            addMessage(ChatMessage(response, false))
+        }
+    }
+
+    private fun addMessage(message: ChatMessage) {
+        chatMessages.add(message)
+        chatAdapter.notifyItemInserted(chatMessages.size - 1)
+        recyclerViewChat.scrollToPosition(chatMessages.size - 1)
     }
 
     private fun saveProgress() {
@@ -67,13 +110,7 @@ class MainActivity : AppCompatActivity() {
         editor.apply()
     }
 
-    private fun updateUI() {
+    private fun updateSoberStatsUI() {
         textViewDaysSober.text = "$daysSober Days Sober"
-    }
-
-    private fun giveEncouragement() {
-        val random = Random()
-        val message = encouragements[random.nextInt(encouragements.size)]
-        textViewAI.text = "AI Companion: $message"
     }
 }
